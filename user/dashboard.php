@@ -1,20 +1,31 @@
 <?php
 session_start();
-require 'db.php';
 
-if (!isset($_SESSION['user_email'])) {
+if (!isset($_SESSION['user_id'])) {
     header("Location: index.php");
     exit();
 }
 
-$stmt = $conn->prepare("SELECT * FROM users WHERE email = :email");
-$stmt->bindParam(':email', $_SESSION['user_email']);
-$stmt->execute();
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
+include '../includes/db.php';
 
-$stmt = $conn->prepare("SELECT * FROM videos ORDER BY video_id DESC");
-$stmt->execute();
-$videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$keyword = isset($_GET['q']) ? "%" . $_GET['q'] . "%" : "";
+
+// Query untuk pengambilan data video
+if (!empty($keyword)) {
+    // Jika ada input keyword, cari video berdasarkan judul atau deskripsi
+    $query = "SELECT * FROM videos WHERE judul LIKE ? OR deskripsi LIKE ? ORDER BY created_at DESC";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("ss", $keyword, $keyword);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $videos = $result->fetch_all(MYSQLI_ASSOC);
+} else {
+    // Jika tidak ada keyword, tampilkan semua video
+    $query = "SELECT * FROM videos ORDER BY created_at DESC";
+    $result = $conn->query($query);
+    $videos = $result->fetch_all(MYSQLI_ASSOC);
+}
+
 ?>
 
 <html>
@@ -22,198 +33,50 @@ $videos = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <title>Flicksy</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet"/>
-    <style>
-        body {
-            margin: 0;
-            font-family: 'Roboto', sans-serif;
-            background-color: #d2b48c;
-        }
-        .sidebar {
-            width: 250px;
-            background-color: #b8860b;
-            height: 100vh;
-            position: fixed;
-            padding: 20px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-        }
-        .sidebar h1 {
-            color: #333;
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
-        .sidebar a {
-            color: #333;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 18px;
-        }
-        .sidebar a i {
-            margin-right: 10px;
-            color: #000;
-        }
-        .sidebar .bottom-links {
-            margin-top: auto;
-        }
-        .content {
-            margin-left: 250px;
-            padding: 20px;
-        }
-        .top-bar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background-size: cover;
-            background-position: center;
-            padding: 10px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            height: 300px;
-            position: relative;
-            margin-top: -20px;
-            margin-left: -20px;
-            margin-right: -20px;
-        }
-        .top-bar input {
-            width: 300px;
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            position: absolute;
-            top: 10px;
-            left: 60px;
-        }
-        .top-bar .icons {
-            display: flex;
-            align-items: center;
-            position: absolute;
-            top: 10px;
-            right: 10px;
-        }
-        .top-bar .icons i {
-            margin-left: 10px;
-            font-size: 20px;
-            color: #000;
-        }
-        .highlight {
-            margin-top: 20px;
-        }
-        .highlight h2 {
-            font-size: 24px;
-            margin-bottom: 10px;
-            display: inline-block;
-        }
-        .highlight .filter {
-            display: inline-block;
-            margin-left: 20px;
-        }
-        .highlight .filter select {
-            padding: 10px;
-            border-radius: 5px;
-            border: 1px solid #ccc;
-            background-color: #d2b48c;
-        }
-        .highlight .cards {
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }
-        .highlight .card {
-            background-color: #fff;
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-            width: 200px;
-        }
-        .highlight .card img {
-            width: 100%;
-            height: 300px;
-            object-fit: cover;
-        }
-        .highlight .card h3 {
-            font-size: 18px;
-            margin: 10px;
-            color: #000000; 
-        }
-        .highlight .card p {
-            font-size: 14px;
-            margin: 10px;
-            color: #333333; 
-        }
-        .highlight .card a {
-            text-decoration: none; 
-        }
-
-        .highlight .card a:hover {
-            text-decoration: none; 
-        }
-    </style>
+    <link rel="stylesheet" href="../css/dashboard_user.css">
 </head>
 <body>
     <div class="sidebar">
-        <h1>Flicksy</h1>
-        <a href="dashboard.php"><i class="fas fa-tachometer-alt"></i> Dashboard</a>
+        <a href="dashboard.php">
+            <h1>Flicksy</h1>
+        </a>
+        <a href="dashboard.php" class="active"><i class="fas fa-home"></i>Home</a>
         <a href="favorit.php"><i class="fas fa-heart"></i> Favorites</a>
         <a href="download.php"><i class="fas fa-download"></i> Downloads</a>
         <a href="history.php"><i class="fas fa-history"></i> History</a>
         <div class="bottom-links">
             <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a>
-            <a href="#"><i class="fas fa-cog"></i> Settings</a>
         </div>
     </div>
+    
+    
     <div class="content">
-        <div class="top-bar" style="background-image: url('image.png');">
-            <input id="search-input" placeholder="Search" type="text" onkeyup="searchVideos()" />
+        <div class="top-bar">
+            <input id="search-input" placeholder="Search..." type="text" />
             <div class="icons">
-                <i class="fas fa-bell"></i>
-                <a href="profil.php"><i class="fas fa-user-circle"></i></a>
+                <a href="profile.php"><i class="fas fa-user-circle"></i></a>
             </div>
         </div>
-
+    
         <div class="highlight">
             <h2>Today's Highlight</h2>
-
-            <div class="filter">
-                <select>
-                    <option>Semua Tahun</option>
-                </select>
-            </div>
-
-            <div class="cards" id="video-cards">
-                <?php foreach ($videos as $video): ?>
-                    <div class="card" class="video-card">
-                        <a href="detail_video.php?video_id=<?= $video['video_id']; ?>">
-                            <video width="100%" height="300" controls>
-                                <source src="flicksy/AdminPhp/uploads/videos/<?= htmlspecialchars($video['video_path']); ?>" type="video/mp4">
-                            </video>
-                            <h3><?= htmlspecialchars($video['judul']); ?></h3>
-                            <p><?= htmlspecialchars($video['deskripsi']); ?></p>
-                        </a>
-                    </div>
-                <?php endforeach; ?>
+            <div class="cards">
+            <?php foreach ($videos as $video): ?>
+                <div class="card">
+                    <a href="detail_video.php?id=<?= $video['video_id']; ?>">
+                        <video width="100%" height="200" controls>
+                            <source src="<?= htmlspecialchars('../' . $video['video_path']); ?>" type="video/mp4">
+                        </video>
+                        <h3><?= htmlspecialchars($video['judul']); ?></h3>
+                        <p><?= htmlspecialchars($video['deskripsi'] ?? 'Deskripsi tidak tersedia'); ?></p>
+                    </a>
+                </div>
+            <?php endforeach; ?>
             </div>
         </div>
     </div>
 
-    <script>
-        function searchVideos() {
-            var searchQuery = document.getElementById('search-input').value.toLowerCase();
-            var videos = document.querySelectorAll('.video-card');
-
-            videos.forEach(function(video) {
-                var title = video.querySelector('h3').textContent.toLowerCase();
-                var description = video.querySelector('p').textContent.toLowerCase();
-
-                if (title.includes(searchQuery) || description.includes(searchQuery)) {
-                    video.style.display = '';
-                } else {
-                    video.style.display = 'none';
-                }
-            });
-        }
-    </script>
+    <script src="../js/dashboard_user.js"></script>
+    
 </body>
 </html>

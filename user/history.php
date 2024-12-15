@@ -1,253 +1,118 @@
 <?php
 session_start();
-require 'db.php';
 
-// Cek jika user sudah login (dengan adanya session user_id)
+// Sertakan koneksi database
+include '../includes/db.php'; // Pastikan path-nya benar sesuai struktur folder Anda
+
+// Cek apakah user sudah login
 if (!isset($_SESSION['user_id'])) {
-    header("Location: index.php");  // Mengarahkan ke halaman login jika belum login
+    header("Location: index.php");
     exit();
 }
 
-// Ambil user_id dari session
 $user_id = $_SESSION['user_id'];
 
-// Query untuk mengambil data pengguna
-$sql_user = "SELECT * FROM users WHERE user_id = :user_id";
-$stmt_user = $conn->prepare($sql_user);
-$stmt_user->bindParam(':user_id', $user_id, PDO::PARAM_INT);
-$stmt_user->execute();
-$user = $stmt_user->fetch(PDO::FETCH_ASSOC);
+// Ambil riwayat tontonan dari database
+$query = "SELECT v.judul, v.deskripsi, v.video_path, h.watched_at 
+          FROM watch_history h
+          JOIN videos v ON h.video_id = v.video_id
+          WHERE h.user_id = ?
+          ORDER BY h.watched_at DESC";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$history = $result->fetch_all(MYSQLI_ASSOC);
 
-if (!$user) {
-    echo "Pengguna tidak ditemukan.";
-    exit();
+if (isset($_POST['delete_all'])) {
+    $user_id = $_SESSION['user_id'];
+
+    // Query untuk menghapus semua history berdasarkan user_id
+    $delete_all_query = "DELETE FROM watch_history WHERE user_id = ?";
+    $stmt = $conn->prepare($delete_all_query);
+    $stmt->bind_param("i", $user_id);
+
+    if ($stmt->execute()) {
+        // Redirect ke halaman history setelah berhasil menghapus semua data
+        header("Location: history.php");
+        exit();
+    } else {
+        echo "Gagal menghapus semua history: " . $stmt->error;
+    }
 }
-
-// Query untuk mengambil data paket pengguna
-$sql_package = "SELECT * FROM user_packages WHERE user_id = :user_id";
-$stmt_package = $conn->prepare($sql_package);
-$stmt_package->bindParam(':user_id', $user_id, PDO::PARAM_INT);
-$stmt_package->execute();
-$package = $stmt_package->fetch(PDO::FETCH_ASSOC);
-
-// Query untuk mengambil history video yang ditonton oleh pengguna
-$sql_history = "SELECT h.idvideo, v.title, v.thumbnail 
-                FROM history h 
-                JOIN videos v ON h.idvideo = v.idvideo 
-                WHERE h.iduser = :user_id";
-$stmt_history = $conn->prepare($sql_history);
-$stmt_history->bindParam(':user_id', $user_id, PDO::PARAM_INT);
-
 
 ?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Riwayat Tontonan</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="../css/dashboard_user.css">
+</head>
+<body>
 
-<html>
- <head>
-  <title>
-   Flicksy
-  </title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
-  <style>
-  body {
-            background-color: #000;
-            color: #fff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            padding: 20px;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .header .title {
-            color: #f0a500;
-            font-size: 24px;
-        }
-        .header .icons {
-            display: flex;
-            gap: 20px;
-        }
-        .header .icons i {
-            font-size: 24px;
-        }
-        .profile {
-            display: flex;
-            align-items: center;
-            margin-top: 20px;
-        }
-        .profile img {
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            margin-right: 10px;
-        }
-        .profile .info {
-            display: flex;
-            align-items: center;
-            margin-right: auto;
-        }
-        .profile .info p {
-            margin: 5px 10px 5px 0;
-        }
-        .profile .actions {
-            display: flex;
-            gap: 10px;
-        }
-        .profile .actions button {
-            background-color: #333;
-            color: #fff;
-            border: 1px solid #fff;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        .package-info {
-            margin-top: 20px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .package-info .left,
-        .package-info .right {
-            width: 48%;
-        }
-        .package-info p {
-            margin: 5px 0;
-        }
-        .menu {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 20px;
-            padding-bottom: 10px;
-        }
-        .menu div {
-            cursor: pointer;
-            position: relative;
-        }
-        .menu div:nth-child(3)::after {
-            content: '';
-            display: block;
-            width: 100%;
-            height: 2px;
-            background-color: #f0a500;
-            position: absolute;
-            bottom: -10px;
-            left: 0;
-        }
-        .menu a {
-    color: white; /* Mengubah warna teks menjadi putih */
-    text-decoration: none; /* Menghapus garis bawah */
-
-   }
-   .custom-link {
-    color: white; /* Mengubah warna teks menjadi putih */
-    text-decoration: none; /* Menghapus garis bawah */
+<style>
+    .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
 }
-        .content {
-            display: flex;
-            justify-content: flex-start;
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .content .card img {
-            width: 200px;
-            border-radius: 10px;
-        }
-        .content .card p {
-            margin: 10px 0 0;
-        }
-        .footer {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            display: flex;
-            gap: 20px;
-        }
-        .footer i {
-            font-size: 24px;
-        }
-  </style>
- </head>
- <body>
-  <div class="container">
-   <div class="header">
-    <div class="title">Flicksy</div>
-    <div class="icons">
-     <i class="fas fa-download"></i>
-     <i class="fas fa-history"></i>
-     <i class="fas fa-star"></i>
-     <i class="fas fa-search"></i>
-     <i class="fas fa-user-circle"></i>
-    </div>
-   </div>
 
-   <div class="profile">
-    <img alt="Profile picture" height="50" src="<?= isset($user['profile_picture']) ? $user['profile_picture'] : 'default.jpg'; ?>" width="50"/>
-    <div class="info">
-    <p><strong>Nama:</strong> <?= isset($user['name']) ? $user['name'] : 'Tidak ditemukan'; ?></p>
-    <p><strong>Email:</strong> <?= isset($user['email']) ? $user['email'] : 'Tidak ditemukan'; ?></p>
-    <p><strong>Identitas Pengguna:</strong> <?= isset($user['user_id']) ? $user['user_id'] : 'Tidak ditemukan'; ?></p>
-     <div class="actions">
-      <button>Edit profil</button>
-      <a href="dashboard.php"><button>Keluar</button></a>
-     </div>
-    </div>
-   </div>
+.delete-all-btn {
+    background-color: #e74c3c;
+    color: #fff;
+    border: none;
+    padding: 10px 15px;
+    border-radius: 5px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
 
-   <div class="package-info">
-    <div class="left">
-        <p>Akun Terdaftar: <?= isset($user['account_type']) ? $user['account_type'] : 'Tidak Ditemukan'; ?></p>
-        <p>Kontak Email: <?= isset($user['email']) ? $user['email'] : 'Tidak Ditemukan'; ?></p>
-        <p><strong>Identitas Pengguna:</strong> <?= isset($user['user_id']) ? $user['user_id'] : 'Tidak Ditemukan'; ?></p>
-        <h2>Jenis Paket:</h2>
-        <p>
-            <?php
-            if ($package) {
-                echo isset($package['package_name']) ? $package['package_name'] : 'Tidak ada paket';
-            } else {
-                echo 'Tidak ada paket';
-            }
-            ?>
-        </p>
-    </div>
-   </div>
+.delete-all-btn:hover {
+    background-color: #c0392b;
+}
 
-   <div class="menu">
-    <div>
-    <a href="profil.php">Paket saya</a>
+</style>
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <a href="dashboard.php"><h1>Flicksy</h1></a>
+        <a href="dashboard.php"><i class="fas fa-home"></i> Home</a>
+        <a href="favorit.php"><i class="fas fa-heart"></i> Favorites</a>
+        <a href="download.php"><i class="fas fa-download"></i> Downloads</a>
+        <a href="history.php" class="active"><i class="fas fa-history"></i> History</a>
+        <div class="bottom-links">
+            <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </div>
     </div>
-    <div>
-    <a href="favorit.php">Favorites</a>
-    </div>
-    <div>History</div>
-    <div>
-    <a href="download.php">Downloads</a>
-    </div>
-   </div>
 
-   <!-- Menampilkan history video yang ditonton -->
-   <div class="content">
-     <?php if (empty($history)): ?>
-        <p>Belum ada video yang ditonton.</p>
-     <?php else: ?>
-        <?php foreach ($history as $video): ?>
-            <div class="card">
-                <img src="<?= $video['thumbnail']; ?>" alt="<?= $video['title']; ?>" />
-                <p><?= $video['title']; ?></p>
-            </div>
-        <?php endforeach; ?>
-     <?php endif; ?>
-   </div>
-
-   <div class="footer">
-    <i class="fab fa-facebook"></i>
-    <i class="fab fa-instagram"></i>
-    <i class="fab fa-youtube"></i>
-    <i class="fab fa-telegram"></i>
-    <i class="fab fa-twitter"></i>
-   </div>
-  </div>
- </body>
+    <!-- Content -->
+    <div class="content">
+        <h2>Riwayat Tontonan</h2>
+        <div class="history-header">
+            <form method="POST" action="history.php" >
+                <button type="submit" name="delete_all" class="delete-all-btn">Hapus Semua Riwayat</button>
+            </form>
+        </div>
+        <div class="cards">
+            <?php if (count($history) > 0): ?>
+                <?php foreach ($history as $item): ?>
+                    <div class="card">
+                        <video width="100%" height="200" controls>
+                            <source src="../<?= htmlspecialchars($item['video_path']); ?>" type="video/mp4">
+                        </video>
+                        <h3><?= htmlspecialchars($item['judul']); ?></h3>
+                        <p><?= htmlspecialchars($item['deskripsi']); ?></p>
+                        <!-- <small>Ditonton pada: <?= htmlspecialchars($item['watched_at']); ?></small> -->
+                    </div>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p>Belum ada riwayat tontonan.</p>
+            <?php endif; ?>
+        </div>
+    </div>
+</body>
 </html>

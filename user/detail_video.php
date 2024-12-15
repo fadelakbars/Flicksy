@@ -1,53 +1,110 @@
 <?php
-$servername = "localhost";
-$username = "root";
-$password = "";
-$dbname = "flicksy";
+session_start();
+include '../includes/db.php';
 
-// Aktifkan error reporting untuk debugging
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
-$conn = new mysqli($servername, $username, $password, $dbname);
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
+// Cek apakah user sudah login
+if (!isset($_SESSION['user_id'])) {
+    header("Location: index.php");
+    exit();
 }
 
-$video_id = isset($_GET['video_id']) ? (int)$_GET['video_id'] : null;
-
-if ($video_id) {
-    $stmt = $conn->prepare("SELECT * FROM videos WHERE video_id = ?");
-    $stmt->bind_param("i", $video_id);
-    $stmt->execute();
-    $result_video = $stmt->get_result();
-    if ($result_video && $result_video->num_rows > 0) {
-        $video = $result_video->fetch_assoc();
-    } else {
-        $video = null;
-    }
-    $stmt->close();
-} else {
-    echo "Video ID tidak ditemukan.";
-    exit;
+// Ambil ID video dari parameter URL
+if (!isset($_GET['id']) || empty($_GET['id'])) {
+    echo "ID video tidak ditemukan.";
+    exit();
 }
+
+$video_id = intval($_GET['id']);
+
+// Ambil data video dari database
+$query = "SELECT judul, deskripsi, video_path FROM videos WHERE video_id = ?";
+$stmt = $conn->prepare($query);
+$stmt->bind_param("i", $video_id);
+$stmt->execute();
+$result = $stmt->get_result();
+$video = $result->fetch_assoc();
 
 if (!$video) {
-    echo "Video tidak ditemukan.";
-    exit;
+    echo "Video tidak ditemukan!";
+    exit();
 }
 
-$video_filename = $video['video_path'];
+$queryy = "SELECT * FROM videos ORDER BY created_at DESC LIMIT 15";
+$resultt = $conn->query($queryy);
+$videoss = $resultt->fetch_all(MYSQLI_ASSOC);
 
-$video_url = '/Flicksy/AdminPhp/uploads/videos/' . htmlspecialchars(basename($video_filename));
-$valid_path = realpath($_SERVER['DOCUMENT_ROOT'] . $video_url);
+// Insert atau update ke watch history
+if (isset($_SESSION['user_id']) && isset($video_id)) {
+    $user_id = $_SESSION['user_id'];
 
-if (!$valid_path || !file_exists($valid_path)) {
-    echo "Video file not found. Checked path: <br>";
-    echo "Checked Path: " . htmlspecialchars($valid_path) . " - NOT FOUND<br>";
-    echo "<h3>Video Database Info:</h3>";
-    print_r($video);
-    exit;
+    // Cek apakah data history sudah ada
+    $check_query = "SELECT * FROM watch_history WHERE user_id = ? AND video_id = ?";
+    $stmt = $conn->prepare($check_query);
+    $stmt->bind_param("ii", $user_id, $video_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+
+    if ($result->num_rows > 0) {
+        // Jika sudah ada, update waktu tontonan
+        $update_query = "UPDATE watch_history SET watched_at = NOW() WHERE user_id = ? AND video_id = ?";
+        $stmt = $conn->prepare($update_query);
+        $stmt->bind_param("ii", $user_id, $video_id);
+        $stmt->execute();
+    } else {
+        // Jika belum ada, insert data baru
+        $insert_query = "INSERT INTO watch_history (user_id, video_id) VALUES (?, ?)";
+        $stmt = $conn->prepare($insert_query);
+        $stmt->bind_param("ii", $user_id, $video_id);
+        $stmt->execute();
+    }
+}
+
+// Cek apakah video sudah di-like
+$like_query = "SELECT * FROM likes WHERE user_id = ? AND video_id = ?";
+$stmt = $conn->prepare($like_query);
+$stmt->bind_param("ii", $user_id, $video_id);
+$stmt->execute();
+$liked = $stmt->get_result()->num_rows > 0;
+
+if (isset($_GET['video_id'])) {
+    $video_id = intval($_GET['video_id']);
+    $user_id = $_SESSION['user_id'];
+
+    // Ambil path video dari database
+    $query = "SELECT video_path FROM videos WHERE video_id = ?";
+    $stmt = $conn->prepare($query);
+    $stmt->bind_param("i", $video_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $video = $result->fetch_assoc();
+
+    if ($video) {
+        $video_path = "../" . $video['video_path'];
+
+        // Cek apakah file video ada
+        if (file_exists($video_path)) {
+            // Catat video yang di-download
+            $insert_query = "INSERT INTO downloads (user_id, video_id) VALUES (?, ?)";
+            $stmt = $conn->prepare($insert_query);
+            $stmt->bind_param("ii", $user_id, $video_id);
+            $stmt->execute();
+
+            // Header untuk mendownload file
+            header('Content-Description: File Transfer');
+            header('Content-Type: application/octet-stream');
+            header('Content-Disposition: attachment; filename="' . basename($video_path) . '"');
+            header('Content-Length: ' . filesize($video_path));
+            flush();
+            readfile($video_path);
+            exit();
+        } else {
+            echo "File video tidak ditemukan.";
+        }
+    } else {
+        echo "Video tidak valid.";
+    }
+} else {
+    // echo "ID video tidak ditemukan.";
 }
 ?>
 
@@ -55,129 +112,87 @@ if (!$valid_path || !file_exists($valid_path)) {
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Flicksy</title>
+    <title><?= htmlspecialchars($video['judul']); ?> - Detail Video</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
-    <style>
-        body {
-            background-color: black;
-            color: white;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            display: flex;
-            flex-direction: row;
-            padding: 20px;
-            justify-content: space-between;
-        }
-        .main-content {
-            flex: 3;
-            padding-right: 20px;
-        }
-        .sidebar {
-            flex: 1;
-            background-color: #1a1a1a;
-            padding: 20px;
-            border-radius: 10px;
-        }
-        .header {
-            font-size: 24px;
-            color: orange;
-            margin-bottom: 20px;
-        }
-        .video-container {
-            position: relative;
-            width: 100%;
-            height: auto;
-            margin-bottom: 20px;
-        }
-        .video-container video {
-            width: 100%;
-            max-width: 900px;
-            height: auto;
-            border-radius: 10px;
-        }
-        .title {
-            font-size: 32px;
-            margin: 20px 0 10px;
-        }
-        .synopsis {
-            font-size: 16px;
-            line-height: 1.5;
-        }
-        .sidebar .menu {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-        .sidebar .menu i {
-            font-size: 20px;
-        }
-        .sidebar .tabs {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 20px;
-        }
-        .sidebar .tabs div {
-            cursor: pointer;
-            padding: 10px;
-            border-bottom: 2px solid transparent;
-        }
-        .sidebar .tabs .active {
-            border-bottom: 2px solid orange;
-        }
-    </style>
+    <link rel="stylesheet" href="../css/detail_video.css">
 </head>
 <body>
-<div class="container">
-    <div class="main-content">
-        <div class="header">
-            Flicksy
-        </div>
+    <!-- Header -->
+    <div class="header" style="text-align: center;">
+        <a href="dashboard.php" style="text-decoration-line: none;">
+            <h1>Flicksy</h1>
+        </a>
+    </div>
 
-        <div class="video-container">
-            <?php if ($video && file_exists($valid_path)): ?>
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="video-container">
                 <video controls autoplay>
-                    <source src="<?= $video_url ?>" type="video/mp4">
+                    <source src="../<?= htmlspecialchars($video['video_path']); ?>" type="video/mp4">
                     Browser Anda tidak mendukung tag video.
                 </video>
-                <div class="title"><?= htmlspecialchars($video['judul']); ?></div>
-                <div class="synopsis"><?= htmlspecialchars($video['deskripsi']); ?></div>
-            <?php else: ?>
-                <p>Video tidak ditemukan atau tidak dapat diakses.</p>
-            <?php endif; ?>
+            </div>
+
+            <!-- Video Footer -->
+            <div class="video-footer">
+                <div class="video-details">
+                    <div class="title"><?= htmlspecialchars($video['judul']); ?></div>
+                    <div class="synopsis"><?= htmlspecialchars($video['deskripsi']); ?></div>
+                </div>
+                <div class="video-actions">
+                    <!-- <i class="fas fa-download" title="Download" id="download-btn" style="cursor: pointer;"></i> -->
+                    <a href="download_video.php?video_id=<?= $video_id; ?>" title="Download">
+                        <i class="fas fa-download" style="cursor: pointer;"></i>
+                    </a>
+                    <i class="fas fa-heart" 
+                        title="Like" 
+                        id="like-btn" 
+                        style="cursor: pointer; color: <?= $liked ? '#e74c3c' : '#f39c12'; ?>;" 
+                        data-video-id="<?= $video_id; ?>"></i>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="tabs">
+                <div class="tab active">Video Terbaru</div>
+            </div>
+            <div class="video-list">
+                <?php foreach ($videoss as $vid): ?>
+                <a href="detail_video.php?id=<?= $vid['video_id']; ?>" style="text-decoration: none;">
+                    <div class="video-item">
+                        <img src="<?= htmlspecialchars('../' . $vid['thumbnile']); ?>" alt="Thumbnail">
+                        <div class="video-title"><?= htmlspecialchars($vid['judul']); ?></div>
+                    </div>
+                </a>
+                <?php endforeach; ?>
+            </div>
         </div>
     </div>
 
-    <div class="sidebar">
-        <div class="menu">
-            <i class="fas fa-download"></i>
-            <i class="fas fa-history"></i>
-            <i class="fas fa-heart"></i>
-            <i class="fas fa-search"></i>
-            <i class="fas fa-ellipsis-h"></i>
-        </div>
-        <div class="tabs">
-            <div class="active">
-                Video Terbaru
-            </div>
-            <div>
-                Rekomendasikan
-            </div>
-        </div>
-    </div>
-</div>
+    <script>
+document.getElementById("like-btn").addEventListener("click", function() {
+    const likeBtn = this;
+    const videoId = likeBtn.getAttribute("data-video-id");
 
-<script>
-    const video = document.querySelector('video');
-    video?.addEventListener('canplay', function() {
-        this.muted = false;
-    });
-</script>
+    fetch("like_video.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `video_id=${videoId}`
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              likeBtn.style.color = data.liked ? "#e74c3c" : "#f39c12"; // Warna merah jika di-like
+          } else {
+              console.error(data.message);
+          }
+      }).catch(err => console.log(err));
+});
+
+    </script>
 </body>
 </html>
-
-<?php
-$conn->close();
-?>
