@@ -79,8 +79,8 @@ body {
 }
 
 .top-bar input {
-    width: 50%;
-    max-width: 400px;
+    width: 100%;
+    max-width: 600px;
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 25px;
@@ -190,5 +190,51 @@ body::-webkit-scrollbar-thumb {
 
 body::-webkit-scrollbar-thumb:hover {
     background-color: #95a5a6;
+}
+
+/* Search Form */
+.search-form {
+    margin: 0 auto; /* Centered */
+    max-width: 500px;
+    width: 100%;
+}
+
+.search-input {
+    flex: 1; /* Input akan menyesuaikan lebar */
+    padding: 10px 15px;
+    font-size: 16px;
+    border: 1px solid #ddd;
+    border-radius: 25px;
+    outline: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.search-button {
+    background-color: #f39c12;
+    color: #fff;
+    padding: 10px 20px;
+    font-size: 16px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.search-button:hover {
+    background-color: #e67e22;
+}
+
+.search-form button {
+    background-color: #f39c12;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 15px;
+    color: #fff;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.search-form button:hover {
+    background-color: #e67e22;
 }
 
